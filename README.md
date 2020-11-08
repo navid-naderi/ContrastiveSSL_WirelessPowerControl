@@ -9,3 +9,16 @@ python main.py --n 6 --device cuda
 ```
 
 Check `main.py` for other optional arguments, such as the number of labeled samples, neural network size, learning rate, etc.
+
+##
+
+If you use this repository in your work, please cite the corresponding paper using the BibTeX citation below:
+
+```
+@article{naderializadeh2020contrastive,
+  title={Contrastive Self-Supervised Learning for Wireless Power Control},
+  author={Naderializadeh, Navid},
+  journal={arXiv preprint arXiv:2010.11909},
+  year={2020}
+}
+```
