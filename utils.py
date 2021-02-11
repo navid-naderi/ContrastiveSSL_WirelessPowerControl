@@ -1,7 +1,6 @@
 import numpy as np
 import math
 import time
-import scipy.io as sio
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn

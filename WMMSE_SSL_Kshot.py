@@ -4,7 +4,6 @@
 import numpy as np
 import math
 import time
-import scipy.io as sio
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
@@ -29,7 +28,7 @@ def k_shot_SSL_train_test(
                     hidden_layers = [256] * 3, # backbone hidden layers
                     num_SSL_pretrain_epochs = 10, # number of SSL pre-training epochs; if set to zero, SSL loss is never used
                     num_k_shot_epochs = 20, # number of k-shot SL training epochs
-                    tau = 0.5, # temperatue in contrastive loss
+                    tau = 0.1, # temperatue in contrastive loss
                     lr = 0.001, # learning rate
                     device = 'cpu', # the device (cpu/gpu) to perform computations on
                     seed = 1234567, # random seed
@@ -83,14 +82,32 @@ def k_shot_SSL_train_test(
     PC_layer = nn.Sequential(nn.Linear(hidden_layers[-1], n),
                              nn.Sigmoid()).to(device)
     PC_layer.train()
+    
+    # derive the initial embeddings prior to training
+    all_initial_embeddings = dict()
+    for phase in data_loaders:
+        all_phase_embeddings = torch.Tensor(0).to(device)
+        backbone.eval()
+        PC_layer.eval()
+        for i, data in enumerate(data_loaders[phase], 0):
+            # get the inputs; data is a list of [inputs, labels]
+            h, p = data
+            h = h.to(device)
+            p = p.to(device)
+            embeddings = F.normalize(backbone(h), dim=1)
+            # Save the embeddings and the ground-truth power levels
+            all_phase_embeddings = torch.cat((all_phase_embeddings, embeddings), dim=0)
+        all_initial_embeddings[phase] = all_phase_embeddings.detach().cpu().numpy()
 
     criterion_MSE = torch.nn.MSELoss()
     criterion_CE = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(list(backbone.parameters()) + list(PC_layer.parameters()), lr = lr)
-
+    optimizer = torch.optim.Adam(list(backbone.parameters()) + list(PC_layer.parameters()), lr=lr)
 
     epoch_losses = defaultdict(list)
     epoch_sum_rates = defaultdict(list)
+    
+    all_embeddings = dict()
+    all_y_wmmse = dict()
 
     num_epochs = num_SSL_pretrain_epochs + num_k_shot_epochs
 
@@ -101,6 +118,9 @@ def k_shot_SSL_train_test(
             # ignore the unlabeled data in case no SSL is needed
             if num_SSL_pretrain_epochs == 0 and phase == 'train-unlabeled':
                 continue
+            
+            all_phase_embeddings = torch.Tensor(0).to(device)
+            all_phase_y_wmmse = torch.Tensor(0).to(device)
             
             if 'train' in phase:
                 backbone.train()
@@ -144,6 +164,10 @@ def k_shot_SSL_train_test(
                 else:
                     embeddings = non_linearity(backbone(h))
                 power_levels = PC_layer(embeddings)
+                
+                # Save the embeddings and the ground-truth power levels
+                all_phase_embeddings = torch.cat((all_phase_embeddings, embeddings), dim=0)
+                all_phase_y_wmmse = torch.cat((all_phase_y_wmmse, p), dim=0)
 
                 if phase == 'test':
                     X_test = torch.cat((X_test, h), dim=0)
@@ -151,29 +175,31 @@ def k_shot_SSL_train_test(
                     Y_test_pred = torch.cat((Y_test_pred, power_levels), dim=0)
 
                 loss_MSE = criterion_MSE(power_levels, p)
-
+        
                 # Compute the total loss
+                alpha_NCE = 1 # coefficient for the contrastive loss in the k-shot phase
                 if num_SSL_pretrain_epochs > 0: # SSL loss included
-                    if epoch >= num_SSL_pretrain_epochs: # pre-training done, k-shot loss included
-                        loss = loss_NCE + loss_MSE
-                    else: # only pre-training SSL loss
+                    if epoch >= num_SSL_pretrain_epochs: # pre-training done
+                        if phase == 'train-unlabeled':
+                            loss = alpha_NCE * loss_NCE
+                        else:
+                            loss = alpha_NCE * loss_NCE + loss_MSE
+                    else: # only SSL loss
                         loss = loss_NCE
-                else: # SSL loss excluded
+                else: # Supervised training only
                     if phase == 'train-unlabeled': # no labels, hence no loss
                         loss = torch.Tensor([0]).to(device)
                     else: # only k-shot MSE loss included
                         loss = loss_MSE
-                    
                 
                 losses['total'].append(loss.item())
-                losses['NCE'].append(loss_NCE.item())
+                losses['MSE'].append(loss_MSE.item())
                 losses['MSE'].append(loss_MSE.item())
 
                 if 'train' in phase and loss > 0:
                     # Backward pass
                     loss.backward()
                     optimizer.step()
-
 
             if phase == 'test':
                 test_data = {'X': X_test.detach().cpu().numpy(),
@@ -184,16 +210,16 @@ def k_shot_SSL_train_test(
                 sum_rates = process_results(test_data, Pmax, var_noise, return_baselines=return_baselines)
                 for alg in sum_rates:
                     epoch_sum_rates[alg].append(sum_rates[alg])
-
+                    
             for key in losses:
                 epoch_losses[phase, key].append(np.mean(losses[key]))
                 
-            
-            
+            all_embeddings[phase] = all_phase_embeddings.detach().cpu().numpy()
+            all_y_wmmse[phase] = all_phase_y_wmmse.detach().cpu().numpy()
+        
     # repeat the baseline sum-rates over all epochs
     for alg in epoch_sum_rates:
         if len(epoch_sum_rates[alg]) == 1:
             epoch_sum_rates[alg] = epoch_sum_rates[alg] * len(epoch_sum_rates[alg])
     
-    
-    return epoch_losses, epoch_sum_rates
+    return epoch_losses, epoch_sum_rates, all_initial_embeddings, all_embeddings, all_y_wmmse
