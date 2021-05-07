@@ -1,4 +1,4 @@
-# Self-supervised contrastive representation learning for downlink power control in wireless interference networks (accepted to IEEE ICASSP 2021)
+# Self-supervised contrastive representation learning for downlink power control in wireless interference networks (IEEE ICASSP 2021)
 
 This is a repository containing the PyTorch implementation of a learning-based power control approach in wireless networks with limited labeled data using self-supervised learning. Contrastive learning is used to pre-train the backbone to create embeddings where similar wireless channel matrices end up close to each other in the embedding space. Supervised learning is subsequently used to train the power control regression head. This approach can significantly reduce the need for data labeling, i.e., deriving optimal power control decisions, and it considerably boosts the performance given a limited labeling budget.
 
