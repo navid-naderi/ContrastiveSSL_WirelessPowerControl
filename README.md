@@ -17,10 +17,12 @@ Moreover, the Jupyter notebook `SSL_2DEmbedding_Clusters.ipynb` can be used to p
 If you use this repository in your work, please cite the accompanying paper using the BibTeX citation below:
 
 ```
-@article{naderializadeh2020contrastive,
+@inproceedings{naderializadeh2021contrastive,
   title={Contrastive Self-Supervised Learning for Wireless Power Control},
   author={Naderializadeh, Navid},
-  journal={arXiv preprint arXiv:2010.11909},
-  year={2020}
+  booktitle={ICASSP 2021-2021 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  pages={4965--4969},
+  year={2021},
+  organization={IEEE}
 }
 ```
